@@ -3,6 +3,8 @@ import csv
 import copy
 import argparse
 import itertools
+import time
+import pyttsx3
 
 import cv2 as cv
 import numpy as np
@@ -11,9 +13,27 @@ import mediapipe as mp
 from utils.cvfpscalc import CvFpsCalc
 from model.keypoint_classifier.keypoint_classifier import KeyPointClassifier
 
+# Variables to track detected gestures and time
+current_word = ""  # Tracks the word being formed
+sentence = ""  # Tracks the complete sentence
+last_detected_time = 0  # Last time a gesture was detected
+word_timeout = 10  # Timeout in seconds to finalize a word
+sentence_timeout = 20  # Timeout in seconds to finalize a sentence
 
 datasetdir = "model/dataset/dataset 1"
+#//////////////////////////////////////////////
+# Initialize the TTS engine
+engine = pyttsx3.init()
 
+# Optional: Set the properties for the speech (rate, volume, voice)
+engine.setProperty('rate', 150)  # Speed of the speech
+engine.setProperty('volume', 1)  # Volume level (0.0 to 1.0)
+
+# Function to speak the sentence
+def speak_sentence(sentence):
+    engine.say(sentence)
+    engine.runAndWait()
+#//////////////////////////////////////////////
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -78,6 +98,20 @@ def main():
         keypoint_classifier_labels = csv.reader(f)
         keypoint_classifier_labels = [row[0] for row in keypoint_classifier_labels]
 
+        # Variables for word and sentence formation #############################
+
+
+    last_detected_time = 0  # Last time a hand gesture was detected
+
+    current_word = ""
+    sentence = ""
+    last_detected_time = time.time()
+    word_timeout = 10  # Timeout to finalize the word (in seconds)
+    sentence_timeout = 20  # Timeout to finalize the sentence (in seconds)
+    gesture_duration = 3  # Minimum duration (in seconds) to consider a gesture valid
+    last_hand_sign_time = time.time()
+    detected_hand_sign = None
+
     # FPS Measurement ########################################################
     cvFpsCalc = CvFpsCalc(buffer_len=10)
 
@@ -102,114 +136,74 @@ def main():
 
         # Detection implementation #############################################################
         image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
-
         image.flags.writeable = False
         results = hands.process(image)
         image.flags.writeable = True
 
-        if mode == 2:
-            # Loading image while processing the dataset
-            loading_img = cv.imread("./assets/om606.png", cv.IMREAD_COLOR)
+        if results.multi_hand_landmarks is not None:
+            for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                # Bounding box calculation
+                brect = calc_bounding_rect(debug_image, hand_landmarks)
+                # Landmark calculation
+                landmark_list = calc_landmark_list(debug_image, hand_landmarks)
 
-            cv.putText(
-                loading_img,
-                "Loading...",
-                (20, 50),
-                cv.FONT_HERSHEY_SIMPLEX,
-                1.0,
-                (255, 255, 255),
-                4,
-                cv.LINE_AA,
-            )
+                # Conversion to relative coordinates / normalized coordinates
+                pre_processed_landmark_list = pre_process_landmark(landmark_list)
 
-            cv.imshow("Hand Gesture Recognition", loading_img)
+                # Hand sign classification
+                hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
 
-            key = cv.waitKey(1000)
+                # Get the detected letter
+                detected_letter = keypoint_classifier_labels[hand_sign_id]
 
-            # Looping through each folder of the dataset
-            imglabel = -1
-            for imgclass in os.listdir(datasetdir):
-                imglabel += 1
-                numofimgs = 0
-                for img in os.listdir(os.path.join(datasetdir, imgclass)):
-                    numofimgs += 1
-                    imgpath = os.path.join(datasetdir, imgclass, img)
-                    try:
-                        img = cv.imread(imgpath)
-                        debug_img = copy.deepcopy(img)
+                # Get the current time
+                current_time = time.time()
 
-                        for _ in [1, 2]:
-                            img.flags.writeable = False
-                            results = hands.process(img)
-                            img.flags.writeable = True
+                # Check if the hand gesture has been detected for long enough to process it
+                if hand_sign_id != -1:
+                    if detected_letter != detected_hand_sign:
+                        # If the detected gesture is different, reset the timer and capture the new gesture
+                        detected_hand_sign = detected_letter
+                        last_hand_sign_time = current_time
 
-                            if results.multi_hand_landmarks is not None:
-                                for hand_landmarks, handedness in zip(
-                                    results.multi_hand_landmarks,
-                                    results.multi_handedness,
-                                ):
-                                    # Bounding box calculation
-                                    brect = calc_bounding_rect(
-                                        debug_img, hand_landmarks
-                                    )
-                                    # Landmark calculation
-                                    landmark_list = calc_landmark_list(
-                                        debug_img, hand_landmarks
-                                    )
+                    # Only add the letter to the word after the gesture has been stable for 'gesture_duration'
+                    if current_time - last_hand_sign_time >= gesture_duration:
+                        # Add the detected letter to the word
+                        if detected_letter != current_word[-1:]:  # Avoid duplicate letters
+                            current_word += detected_letter
+                        # Reset the timer for the next gesture
+                        last_hand_sign_time = current_time
 
-                                    # Conversion to relative coordinates / normalized coordinates
-                                    pre_processed_landmark_list = pre_process_landmark(
-                                        landmark_list
-                                    )
+                # If no gesture is detected for more than 'word_timeout', finalize the current word
+                if current_time - last_detected_time > word_timeout and current_word:
+                    sentence += current_word + " "
+                    current_word = ""
 
-                                    # Write to the dataset file
-                                    logging_csv(
-                                        imglabel, mode, pre_processed_landmark_list
-                                    )
-                            img = cv.flip(img, 0)
-                    except Exception as e:
-                        print(f"Issue with image {imgpath}")
+                # If no gesture is detected for more than 'sentence_timeout', finalize the sentence
+                if current_time - last_detected_time > sentence_timeout and sentence:
+                    print(f"Final Sentence: {sentence.strip()}")
+                    speak_sentence(sentence.strip())  # Converts the sentence to speech
+                    sentence = ""  # Clear sentence after finalizing
 
-                print(f"Num of image of the class {imglabel} is : {numofimgs}")
-            mode = 1
-            print("End of job!")
-            break
+                # Keep updating the last detection time
+                last_detected_time = current_time
+
         else:
-            if results.multi_hand_landmarks is not None:
-                for hand_landmarks, handedness in zip(
-                    results.multi_hand_landmarks, results.multi_handedness
-                ):
-                    # Bounding box calculation
-                    brect = calc_bounding_rect(debug_image, hand_landmarks)
-                    # Landmark calculation
-                    landmark_list = calc_landmark_list(debug_image, hand_landmarks)
+            # If no gesture is detected, still display the current word and sentence
+            if current_word:
+                sentence += current_word + " "
+            current_word = ""  # Reset the current word if no gesture is detected
 
-                    # Conversion to relative coordinates / normalized coordinates
-                    pre_processed_landmark_list = pre_process_landmark(landmark_list)
+        # Always display the current word and sentence, even if no new gestures are detected
+        cv.putText(debug_image, f"Word: {current_word}", (10, 70), cv.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        cv.putText(debug_image, f"Sentence: {sentence.strip()}", (10, 110), cv.FONT_HERSHEY_SIMPLEX, 0.8,
+                   (255, 255, 255), 2)
 
-                    # Write to the dataset file
-                    logging_csv(number, mode, pre_processed_landmark_list)
+        # Draw the additional information like fps
+        debug_image = draw_info(debug_image, fps, mode, number)
 
-                    # Hand sign classification
-                    hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
-
-                    # Finger gesture classification
-                    finger_gesture_id = 0
-
-                    # Drawing part
-                    debug_image = draw_bounding_rect(use_brect, debug_image, brect)
-                    debug_image = draw_landmarks(debug_image, landmark_list)
-                    debug_image = draw_info_text(
-                        debug_image,
-                        brect,
-                        handedness,
-                        keypoint_classifier_labels[hand_sign_id],
-                    )
-
-            debug_image = draw_info(debug_image, fps, mode, number)
-
-            # Screen reflection #############################################################
-            cv.imshow("Hand Gesture Recognition", debug_image)
+        # Show the webcam output with the current word and sentence
+        cv.imshow("Hand Gesture Recognition", debug_image)
 
     cap.release()
     cv.destroyAllWindows()
