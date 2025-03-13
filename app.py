@@ -1,4 +1,3 @@
-import os
 import csv
 import copy
 import argparse
@@ -107,8 +106,8 @@ def main():
     sentence = ""
     last_detected_time = time.time()
     word_timeout = 10  # Timeout to finalize the word (in seconds)
-    sentence_timeout = 20  # Timeout to finalize the sentence (in seconds)
-    gesture_duration = 3  # Minimum duration (in seconds) to consider a gesture valid
+    sentence_timeout = 6  # Timeout to finalize the sentence (in seconds)
+    gesture_duration = 1  # Minimum duration (in seconds) to consider a gesture valid
     last_hand_sign_time = time.time()
     detected_hand_sign = None
 
@@ -147,6 +146,10 @@ def main():
                 # Landmark calculation
                 landmark_list = calc_landmark_list(debug_image, hand_landmarks)
 
+                # Always draw the detected hand (even if no letter is added)
+                debug_image = draw_bounding_rect(use_brect, debug_image, brect)
+                debug_image = draw_landmarks(debug_image, landmark_list)
+
                 # Conversion to relative coordinates / normalized coordinates
                 pre_processed_landmark_list = pre_process_landmark(landmark_list)
 
@@ -154,7 +157,11 @@ def main():
                 hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
 
                 # Get the detected letter
-                detected_letter = keypoint_classifier_labels[hand_sign_id]
+                detected_letter = keypoint_classifier_labels[hand_sign_id] if hand_sign_id != -1 else "?"
+
+                # Display the letter associated with the detected gesture in real-time
+                cv.putText(debug_image, f"Detected: {detected_letter}", (10, 40), cv.FONT_HERSHEY_SIMPLEX, 0.8,
+                           (0, 255, 0), 2)
 
                 # Get the current time
                 current_time = time.time()
@@ -199,11 +206,8 @@ def main():
         cv.putText(debug_image, f"Sentence: {sentence.strip()}", (10, 110), cv.FONT_HERSHEY_SIMPLEX, 0.8,
                    (255, 255, 255), 2)
 
-        # Draw the additional information like fps
-        debug_image = draw_info(debug_image, fps, mode, number)
-
         # Show the webcam output with the current word and sentence
-        cv.imshow("Hand Gesture Recognition", debug_image)
+        cv.imshow("ASL Translator using OpenCV ", debug_image)
 
     cap.release()
     cv.destroyAllWindows()
@@ -501,67 +505,67 @@ def draw_landmarks(image, landmark_point):
 
     # Key Points
     for index, landmark in enumerate(landmark_point):
-        if index == 0:  # 手首1
+        if index == 0:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 1:  # 手首2
+        if index == 1:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 2:  # 親指：付け根
+        if index == 2:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 3:  # 親指：第1関節
+        if index == 3:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 4:  # 親指：指先
+        if index == 4:
             cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
-        if index == 5:  # 人差指：付け根
+        if index == 5:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 6:  # 人差指：第2関節
+        if index == 6:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 7:  # 人差指：第1関節
+        if index == 7:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 8:  # 人差指：指先
+        if index == 8:
             cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
-        if index == 9:  # 中指：付け根
+        if index == 9:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 10:  # 中指：第2関節
+        if index == 10:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 11:  # 中指：第1関節
+        if index == 11:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 12:  # 中指：指先
+        if index == 12:
             cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
-        if index == 13:  # 薬指：付け根
+        if index == 13:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 14:  # 薬指：第2関節
+        if index == 14:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 15:  # 薬指：第1関節
+        if index == 15:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 16:  # 薬指：指先
+        if index == 16:
             cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
-        if index == 17:  # 小指：付け根
+        if index == 17:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 18:  # 小指：第2関節
+        if index == 18:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 19:  # 小指：第1関節
+        if index == 19:
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 20:  # 小指：指先
+        if index == 20:
             cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255), -1)
             cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
 
